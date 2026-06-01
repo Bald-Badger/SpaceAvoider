@@ -1,0 +1,6 @@
+[submodule "audio/Airbus-A220-GPWS"]
+	path = audio/Airbus-A220-GPWS
+	url = https://github.com/LScrpCM/Airbus-A220-GPWS.git
+[submodule "audio/GeoFS-alerts"]
+	path = audio/GeoFS-alerts
+	url = https://github.com/avramovic/GeoFS-alerts.git

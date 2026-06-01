@@ -21,6 +21,81 @@ class AudioPlaybackConfig:
     volume: float = 1.0
 
 
+class InterruptingAudioPlayer:
+    """Non-queueing pygame mixer player for short cockpit callouts."""
+
+    def __init__(self, audio_device: str | None = DEFAULT_AUDIO_DEVICE, volume: float = 1.0) -> None:
+        self.audio_device = audio_device
+        self.volume = _clamp_volume(volume)
+        self._pygame = _import_pygame()
+        self._initialized = False
+        self._sounds: dict[Path, object] = {}
+
+    def start(self) -> None:
+        if self._initialized:
+            return
+
+        _init_mixer(self._pygame, self.audio_device)
+        self._initialized = True
+
+    def preload(self, audio_files: list[Path] | tuple[Path, ...]) -> None:
+        """Decode and cache clips in memory before time-critical playback."""
+
+        self.start()
+        for audio_file in audio_files:
+            self._load_sound(audio_file)
+
+    def play_now(self, audio_file: Path) -> None:
+        """Stop any current callout and immediately play ``audio_file``.
+
+        This falls back to decoding/loading the clip if it was not preloaded.
+        Time-critical paths should call ``play_preloaded_now`` instead.
+        """
+
+        self.start()
+        sound = self._load_sound(audio_file)
+        self._play_sound(sound)
+
+    def play_preloaded_now(self, audio_file: Path) -> None:
+        """Stop any current callout and play an already decoded cached clip."""
+
+        self.start()
+        audio_file = audio_file.expanduser().resolve()
+        sound = self._sounds.get(audio_file)
+        if sound is None:
+            raise SystemExit(f"Audio file was not preloaded: {audio_file}")
+
+        self._play_sound(sound)
+
+    def _play_sound(self, sound) -> None:
+        sound.set_volume(self.volume)
+        self._pygame.mixer.stop()
+        channel = sound.play()
+        if channel is None:
+            raise SystemExit("pygame.mixer could not start audio playback")
+
+    def stop(self) -> None:
+        if self._initialized:
+            self._pygame.mixer.stop()
+
+    def close(self) -> None:
+        if self._initialized:
+            self._pygame.mixer.quit()
+            self._initialized = False
+        self._sounds.clear()
+
+    def _load_sound(self, audio_file: Path):
+        audio_file = audio_file.expanduser().resolve()
+        if not audio_file.is_file():
+            raise SystemExit(f"Audio file does not exist: {audio_file}")
+
+        sound = self._sounds.get(audio_file)
+        if sound is None:
+            sound = self._pygame.mixer.Sound(str(audio_file))
+            self._sounds[audio_file] = sound
+        return sound
+
+
 def play_audio_clip(config: AudioPlaybackConfig | None = None) -> None:
     """Play one WAV/OGG/MP3 clip through pygame.mixer and wait for it to finish."""
 

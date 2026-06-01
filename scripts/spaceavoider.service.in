@@ -1,0 +1,33 @@
+# SpaceAvoider runtime boot service.
+#
+# Install/update through:
+#   sudo bash scripts/setup_pi_overlay.sh
+#
+# Manual service controls:
+#   sudo systemctl start spaceavoider.service
+#   sudo systemctl stop spaceavoider.service
+#   sudo systemctl restart spaceavoider.service
+#   sudo systemctl status spaceavoider.service
+#
+# Logs:
+#   journalctl -u spaceavoider.service -f
+#   tail -f __PROJECT_ROOT__/log/SpaceAvoider_log_*.log
+
+[Unit]
+Description=SpaceAvoider runtime
+After=local-fs.target sound.target
+RequiresMountsFor=__PROJECT_ROOT__
+
+[Service]
+Type=simple
+User=__PROJECT_USER__
+Group=__PROJECT_GROUP__
+WorkingDirectory=__PROJECT_ROOT__
+Environment=PYTHONUNBUFFERED=1
+Environment=PYGAME_HIDE_SUPPORT_PROMPT=1
+ExecStart=__PROJECT_ROOT__/.venv/bin/python -m code.runtime.main
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

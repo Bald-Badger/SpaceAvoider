@@ -22,9 +22,26 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 PROJECT_VENV="${PROJECT_ROOT}/.venv"
+SERVICE_TEMPLATE="${SCRIPT_DIR}/spaceavoider.service.in"
+SERVICE_NAME="spaceavoider.service"
+SERVICE_DESTINATION="/etc/systemd/system/${SERVICE_NAME}"
 ARGON_ONE_INSTALLER_URL="https://download.argon40.com/argon1.sh"
 APT_DATE_REFERENCE_URL="http://deb.debian.org/debian/"
 MAX_CLOCK_SKEW_SECONDS=300
+
+PROJECT_PIP_PACKAGES=(
+    adafruit-circuitpython-dht
+    adafruit-circuitpython-matrixkeypad
+    sparkfun-qwiic-bmp581
+)
+
+SYSTEM_APT_PACKAGES=(
+    build-essential
+    libgpiod2
+    python3-dev
+    python3-full
+    python3-pygame
+)
 
 
 log() {
@@ -138,12 +155,17 @@ install_argon_one_driver() {
 install_python3_full() {
     log "installing Python system packages"
     export DEBIAN_FRONTEND=noninteractive
-    run apt-get install -y python3-full python3-pygame
+    run apt-get install -y "${SYSTEM_APT_PACKAGES[@]}"
 }
 
 
 project_owner() {
     stat -c '%U' "${PROJECT_ROOT}"
+}
+
+
+project_group() {
+    stat -c '%G' "${PROJECT_ROOT}"
 }
 
 
@@ -162,11 +184,51 @@ run_as_project_owner() {
 }
 
 
+install_runtime_service() {
+    local owner
+    local group
+    local rendered_service
+
+    owner="$(project_owner)"
+    group="$(project_group)"
+
+    if [[ "${owner}" == "root" || "${owner}" == "UNKNOWN" ]]; then
+        if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+            owner="${SUDO_USER}"
+            group="$(id -gn "${SUDO_USER}")"
+        else
+            die "Could not determine non-root project owner for ${SERVICE_NAME}"
+        fi
+    fi
+
+    [[ -f "${SERVICE_TEMPLATE}" ]] || die "Missing service template: ${SERVICE_TEMPLATE}"
+    require_command systemctl
+
+    log "installing systemd service ${SERVICE_NAME} as ${owner}:${group}"
+    rendered_service="$(mktemp)"
+    sed \
+        -e "s#__PROJECT_ROOT__#${PROJECT_ROOT}#g" \
+        -e "s#__PROJECT_USER__#${owner}#g" \
+        -e "s#__PROJECT_GROUP__#${group}#g" \
+        "${SERVICE_TEMPLATE}" > "${rendered_service}"
+
+    run install -m 0644 "${rendered_service}" "${SERVICE_DESTINATION}"
+    rm -f "${rendered_service}"
+
+    run systemctl daemon-reload
+    run systemctl enable "${SERVICE_NAME}"
+    log "service enabled for boot: ${SERVICE_NAME}"
+    log "start now with: sudo systemctl start ${SERVICE_NAME}"
+    log "view logs with: journalctl -u ${SERVICE_NAME} -f"
+}
+
+
 setup_python_venv() {
     log "creating/updating project Python virtual environment at ${PROJECT_VENV}"
     run_as_project_owner python3 -m venv --system-site-packages "${PROJECT_VENV}"
     run_as_project_owner "${PROJECT_VENV}/bin/python" -m pip install --upgrade pip
     run_as_project_owner "${PROJECT_VENV}/bin/python" -m pip uninstall -y pygame-ce pygame || true
+    run_as_project_owner "${PROJECT_VENV}/bin/python" -m pip install "${PROJECT_PIP_PACKAGES[@]}"
     log "activate with: source ${PROJECT_VENV}/bin/activate"
 }
 
@@ -186,6 +248,7 @@ main() {
     # install_argon_one_driver
     install_python3_full
     setup_python_venv
+    install_runtime_service
 
     log "setup complete"
     log "Next: sudo overlayctl enable && sudo reboot"

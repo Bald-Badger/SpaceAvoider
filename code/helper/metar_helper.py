@@ -14,10 +14,15 @@ import re
 import socket
 import time
 from typing import Any
+from urllib.error import URLError
+from urllib.parse import urlencode
 from urllib.parse import urlparse
+from urllib.request import Request
+from urllib.request import urlopen
 
 
 STRATUX_WEATHER_WS_URL = "ws://127.0.0.1/weather"
+AVIATIONWEATHER_METAR_URL = "https://aviationweather.gov/api/data/metar"
 METAR_TYPES = {"METAR", "SPECI"}
 
 
@@ -111,6 +116,76 @@ def parse_metar_text(raw_metar: str) -> dict[str, Any]:
     }
 
 
+def get_latest_metar_from_aviationweather(
+    station: str,
+    timeout_seconds: float = 5.0,
+    hours: int = 2,
+) -> dict[str, Any]:
+    """Fetch the latest METAR for one station from AviationWeather.gov."""
+
+    station = station.upper()
+    query = urlencode(
+        {
+            "ids": station,
+            "format": "json",
+            "taf": "false",
+            "hours": str(hours),
+        }
+    )
+    url = f"{AVIATIONWEATHER_METAR_URL}?{query}"
+    request = Request(url, headers={"User-Agent": "SpaceAvoider/0.1"})
+
+    try:
+        with urlopen(request, timeout=timeout_seconds) as response:
+            payload = response.read().decode("utf-8", errors="replace")
+    except URLError as error:
+        raise ConnectionError(f"Could not read METAR from {url}") from error
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return {
+            "available": False,
+            "source": url,
+            "read_at_unix": time.time(),
+            "station": station,
+            "reason": "AviationWeather.gov did not return JSON.",
+            "raw_response": payload[:500],
+        }
+    if not isinstance(data, list) or not data:
+        return {
+            "available": False,
+            "source": url,
+            "read_at_unix": time.time(),
+            "station": station,
+            "reason": "No METAR returned by AviationWeather.gov.",
+        }
+
+    message = data[0]
+    if not isinstance(message, dict):
+        raise ValueError(f"AviationWeather.gov METAR response was not a JSON object: {url}")
+
+    raw_metar = _first_present(message, "rawOb", "raw_text", "raw", "metar")
+    raw_metar = "" if raw_metar is None else str(raw_metar)
+    parsed = parse_metar_text(raw_metar)
+    altimeter_inhg = _to_float(_first_present(message, "altim", "altimeter_inhg"))
+    if altimeter_inhg is not None and altimeter_inhg > 100.0:
+        altimeter_inhg = round(altimeter_inhg * 0.0295299830714, 2)
+    if altimeter_inhg is None:
+        altimeter_inhg = parsed["altimeter_inhg"]
+
+    return {
+        "available": True,
+        "source": url,
+        "read_at_unix": time.time(),
+        "station": str(_first_present(message, "icaoId", "station_id", default=station)).upper(),
+        "raw": raw_metar,
+        "altimeter_inhg": altimeter_inhg,
+        "flight_condition": parsed["flight_condition"],
+        "aviationweather": message,
+    }
+
+
 def _normalize_metar_message(message: dict[str, Any]) -> dict[str, Any]:
     raw_metar = str(message.get("Data", ""))
     parsed = parse_metar_text(raw_metar)
@@ -198,6 +273,23 @@ def _parse_ceiling_ft(raw_metar: str) -> int | None:
     if ceilings:
         return min(ceilings)
     return None
+
+
+def _first_present(data: dict[str, Any], *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        value = data.get(key)
+        if value is not None:
+            return value
+    return default
+
+
+def _to_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 class _WeatherWebSocket:
