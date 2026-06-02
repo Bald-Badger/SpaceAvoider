@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from code.helper.audio_helper import DEFAULT_AUDIO_DEVICE, InterruptingAudioPlayer
+from code.helper.bluetooth_helper import ensure_device_connected
 from code.runtime.altitude import CalibrationInput, calibrate_altitude
 from code.runtime.approach import ApproachModeController
 from code.runtime.events import KeyPressedEvent, RuntimeEvent, SensorFaultEvent
@@ -24,6 +25,8 @@ from code.runtime.workers import start_runtime_workers
 
 DEFAULT_GPS_SANITY_THRESHOLD_FT = 500.0
 DEFAULT_STATUS_INTERVAL_SECONDS = 5.0
+DEFAULT_BLUETOOTH_AUDIO_NAME = "SoundCore 2"
+DEFAULT_BLUETOOTH_AUDIO_SCAN_SECONDS = 10.0
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 STARTUP_AUDIO = PROJECT_ROOT / "audio" / "GeoFS-alerts" / "audio" / "airbus-autopilot-off.mp3"
 CALIBRATE_MODE_AUDIO = PROJECT_ROOT / "audio" / "ai_gen" / "Calibrate mode.wav"
@@ -180,9 +183,25 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-keypad", action="store_true", help="disable the keypad worker")
     parser.add_argument("--no-audio", action="store_true", help="disable approach callout audio playback")
     parser.add_argument(
+        "--no-bluetooth-audio",
+        action="store_true",
+        help="skip startup Bluetooth speaker discovery and use the configured audio device",
+    )
+    parser.add_argument(
+        "--bluetooth-audio-name",
+        default=DEFAULT_BLUETOOTH_AUDIO_NAME,
+        help="Bluetooth speaker name to prefer at startup",
+    )
+    parser.add_argument(
+        "--bluetooth-scan-seconds",
+        type=float,
+        default=DEFAULT_BLUETOOTH_AUDIO_SCAN_SECONDS,
+        help="seconds to scan for the preferred Bluetooth speaker at startup",
+    )
+    parser.add_argument(
         "--audio-device",
         default=DEFAULT_AUDIO_DEVICE,
-        help="pygame/SDL audio device name for callouts",
+        help="SDL audio device name for callouts",
     )
     parser.add_argument(
         "--system-audio-default",
@@ -204,7 +223,7 @@ def main() -> None:
     stop_event = threading.Event()
     audio_player = None
     if not args.no_audio:
-        audio_device = None if args.system_audio_default else args.audio_device
+        audio_device = select_startup_audio_device(args)
         audio_player = InterruptingAudioPlayer(audio_device=audio_device, volume=args.volume)
     calibration = CalibrationController(
         state,
@@ -315,6 +334,46 @@ def _format_status(state: RuntimeState) -> str:
         metar_text = f"metar={metar.station} {metar.altimeter_inhg:.2f} inHg"
 
     return f"[status] {pressure_text} {humidity_text} {altitude_text} {gps_text} {metar_text} {approach_text}"
+
+
+def select_startup_audio_device(args: argparse.Namespace) -> str | None:
+    fallback_device = None if args.system_audio_default else args.audio_device
+
+    if args.system_audio_default:
+        print("[audio] using system default audio output; Bluetooth speaker auto-select skipped", flush=True)
+        return fallback_device
+
+    if args.no_bluetooth_audio:
+        print(f"[audio] Bluetooth speaker auto-select disabled; using {fallback_device!r}", flush=True)
+        return fallback_device
+
+    speaker_name = args.bluetooth_audio_name
+    try:
+        result = ensure_device_connected(
+            name=speaker_name,
+            scan_seconds=args.bluetooth_scan_seconds,
+            transport="bredr",
+        )
+    except (Exception, SystemExit) as exc:
+        print(f"[audio] Bluetooth speaker setup failed: {exc}; using {fallback_device!r}", flush=True)
+        return fallback_device
+
+    print(f"[audio] {result.message}", flush=True)
+    if not result.connected:
+        print(f"[audio] using fallback audio device {fallback_device!r}", flush=True)
+        return fallback_device
+
+    if result.device is None:
+        print(f"[audio] Bluetooth speaker connected without device metadata; using {fallback_device!r}", flush=True)
+        return fallback_device
+
+    bluealsa_device = bluealsa_pcm_for_device(result.device.address)
+    print(f"[audio] using Bluetooth BlueALSA output {bluealsa_device!r}", flush=True)
+    return bluealsa_device
+
+
+def bluealsa_pcm_for_device(address: str) -> str:
+    return f"bluealsa:SRV=org.bluealsa,DEV={address.upper()},PROFILE=a2dp"
 
 
 if __name__ == "__main__":

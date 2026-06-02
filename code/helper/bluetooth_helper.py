@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 DEFAULT_SCAN_SECONDS = 10.0
 DEFAULT_SCAN_TRANSPORT = "auto"
 BLUETOOTHCTL_TIMEOUT_PADDING_SECONDS = 5.0
+BLUETOOTHCTL_CONNECT_TIMEOUT_SECONDS = 30.0
 ADDRESS_LIKE_NAME_RE = re.compile(r"^[0-9A-Fa-f]{2}(?:[:-][0-9A-Fa-f]{2}){5}$")
 DEVICE_LINE_RE = re.compile(
     r"^(?:\[[A-Z]+\]\s+)?Device\s+"
@@ -36,6 +37,102 @@ class BluetoothDevice:
     paired: bool | None = None
     connected: bool | None = None
     rssi: int | None = None
+
+
+@dataclass(frozen=True)
+class BluetoothConnectionResult:
+    requested_name: str
+    found: bool
+    connected: bool
+    device: BluetoothDevice | None
+    message: str
+
+
+def ensure_device_connected(
+    name: str,
+    scan_seconds: float = DEFAULT_SCAN_SECONDS,
+    transport: str = "bredr",
+) -> BluetoothConnectionResult:
+    """Find, pair/trust, and connect a named Bluetooth device when possible."""
+
+    _require_bluetoothctl()
+    device = find_device_by_name(name=name, scan_seconds=scan_seconds, transport=transport)
+    if device is None:
+        return BluetoothConnectionResult(
+            requested_name=name,
+            found=False,
+            connected=False,
+            device=None,
+            message=f"Bluetooth device {name!r} was not found",
+        )
+
+    if device.connected is True:
+        return BluetoothConnectionResult(
+            requested_name=name,
+            found=True,
+            connected=True,
+            device=device,
+            message=f"Bluetooth device {device.name!r} is already connected",
+        )
+
+    _pair_trust_connect(device.address)
+    connected_device = get_device_info(device.address)
+    connected = connected_device.connected is True
+    return BluetoothConnectionResult(
+        requested_name=name,
+        found=True,
+        connected=connected,
+        device=connected_device,
+        message=(
+            f"Bluetooth device {connected_device.name!r} connected"
+            if connected
+            else f"Bluetooth device {connected_device.name!r} was found but did not connect"
+        ),
+    )
+
+
+def find_device_by_name(
+    name: str,
+    scan_seconds: float = DEFAULT_SCAN_SECONDS,
+    transport: str = "bredr",
+) -> BluetoothDevice | None:
+    """Find a Bluetooth device by friendly name from cached devices or a scan."""
+
+    needle = name.casefold()
+
+    for device in list_known_devices():
+        if needle in device.name.casefold() or needle in device.alias.casefold():
+            return device
+
+    for device in list_nearby_devices(scan_seconds=scan_seconds, transport=transport, name_filter=name):
+        return device
+
+    return None
+
+
+def list_known_devices(name_filter: str = "") -> list[BluetoothDevice]:
+    """Return devices currently known to BlueZ, without starting discovery."""
+
+    _require_bluetoothctl()
+    output = _run_bluetoothctl_command(("devices",), timeout=BLUETOOTHCTL_TIMEOUT_PADDING_SECONDS)
+    devices = _enrich_devices(_parse_devices(output))
+
+    if name_filter:
+        needle = name_filter.casefold()
+        devices = [
+            device
+            for device in devices
+            if needle in device.name.casefold() or needle in device.alias.casefold()
+        ]
+
+    return devices
+
+
+def get_device_info(address: str) -> BluetoothDevice:
+    """Return the latest BlueZ info for one Bluetooth address."""
+
+    placeholder = BluetoothDevice(address=address.upper(), name="unknown", alias="unknown")
+    return _merge_device_info(placeholder, _run_bluetoothctl_info(address))
 
 
 def list_nearby_devices(
@@ -188,6 +285,75 @@ def _run_bluetoothctl_info(address: str) -> str:
     return result.stdout
 
 
+def _run_bluetoothctl_commands(commands: tuple[str, ...], timeout: float) -> str:
+    return _run_bluetoothctl_command((*commands, "quit"), timeout=timeout)
+
+
+def _pair_trust_connect(address: str) -> str:
+    steps = (
+        ("power on", 0.5),
+        ("agent on", 0.5),
+        ("default-agent", 0.5),
+        (f"pair {address}", 8.0),
+        (f"trust {address}", 1.0),
+        (f"connect {address}", 8.0),
+        (f"info {address}", 0.5),
+        ("quit", 0.0),
+    )
+
+    try:
+        process = subprocess.Popen(
+            ["bluetoothctl"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    except OSError as exc:
+        raise SystemExit(f"Could not start bluetoothctl: {exc}") from exc
+
+    assert process.stdin is not None
+
+    for command, delay_seconds in steps:
+        try:
+            process.stdin.write(f"{command}\n")
+            process.stdin.flush()
+        except BrokenPipeError as exc:
+            output, _ = process.communicate(timeout=BLUETOOTHCTL_TIMEOUT_PADDING_SECONDS)
+            raise SystemExit(_format_bluetoothctl_failure(output)) from exc
+
+        time.sleep(delay_seconds)
+
+    try:
+        output, _ = process.communicate(timeout=BLUETOOTHCTL_CONNECT_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as exc:
+        process.kill()
+        output, _ = process.communicate()
+        raise SystemExit(_format_bluetoothctl_failure(output)) from exc
+
+    return output
+
+
+def _run_bluetoothctl_command(commands: tuple[str, ...], timeout: float) -> str:
+    try:
+        result = subprocess.run(
+            ["bluetoothctl"],
+            input="\n".join(commands) + "\n",
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=timeout,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise SystemExit(f"bluetoothctl command failed: {exc}") from exc
+
+    if result.returncode != 0:
+        raise SystemExit(_format_bluetoothctl_failure(result.stdout))
+
+    return result.stdout
+
+
 def _merge_device_info(device: BluetoothDevice, info: str) -> BluetoothDevice:
     fields: dict[str, str] = {}
 
@@ -256,12 +422,33 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--name", default="", help="only print devices whose name or alias contains this text")
     parser.add_argument("--named-only", action="store_true", help="hide unresolved address-like Bluetooth entries")
+    parser.add_argument(
+        "--connect",
+        action="store_true",
+        help="pair/trust/connect the named device instead of only listing devices",
+    )
     parser.add_argument("--json", action="store_true", help="print devices as JSON")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+
+    if args.connect:
+        if not args.name:
+            raise SystemExit("--connect requires --name")
+
+        result = ensure_device_connected(
+            name=args.name,
+            scan_seconds=args.seconds,
+            transport=args.transport,
+        )
+        if args.json:
+            print(json.dumps(asdict(result), indent=2))
+        else:
+            print(result.message)
+        raise SystemExit(0 if result.connected else 1)
+
     devices = list_nearby_devices(
         scan_seconds=args.seconds,
         transport=args.transport,

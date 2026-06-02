@@ -29,7 +29,9 @@ Current repository state:
 - `code/helper/gps_helper.py`: gpsd first, then Stratux `/getSituation` fallback.
 - `code/helper/metar_helper.py`: Stratux `/weather` WebSocket client and METAR/SPECI parser.
 - `code/helper/display_helper.py`: display glue placeholder only. The Python pygame/framebuffer experiment was removed; future performance-sensitive rendering should be implemented in C++.
-- `code/helper/audio_helper.py`: pygame mixer helper that plays the default audio callout through the Raspberry Pi headphone output.
+- `native/audio_player.cpp`: SDL2_mixer native audio service for low-latency callout playback.
+- `scripts/build_native.sh`: builds native helper binaries into ignored `build/`.
+- `code/helper/audio_helper.py`: Python glue for the native audio player; keeps the runtime API but does not do decoding/playback itself.
 - `code/helper/bluetooth_helper.py`: BlueZ/bluetoothctl helper that scans and lists nearby Bluetooth devices.
 - `code/helper/pressure_helper.py`: SparkFun Qwiic BMP581 helper that reports pressure in Pa/hPa/inHg and temperature in C.
 - `code/helper/humidity_helper.py`: Adafruit CircuitPython DHT helper for DHT11 temperature/humidity on GPIO17.
@@ -51,12 +53,15 @@ Persistent Pi setup:
   - checks/corrects the Pi clock using the HTTP `Date` header from `http://deb.debian.org/debian/`
   - runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`
   - keeps the Argon ONE installer function in the file, but the call is commented out
-  - installs `build-essential`, `python3-dev`, `python3-full`, `python3-pygame` for audio playback, GPIO support libraries, and BlueZ Bluetooth tools
+  - installs `build-essential`, `libsdl2-dev`, `libsdl2-mixer-dev`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support
+  - enables/starts `bluealsa.service` and `bluealsa-aplay.service` when those units exist
+  - builds native helper binaries with `scripts/build_native.sh`
   - creates/updates `.venv` with `--system-site-packages`
-  - uninstalls venv-local `pygame-ce`/`pygame` so apt `python3-pygame` remains visible
+  - uninstalls venv-local `pygame-ce`/`pygame` because display/audio no longer depend on Python pygame
   - installs project PyPI packages into `.venv`, currently `adafruit-circuitpython-dht`, `adafruit-circuitpython-matrixkeypad`, and `sparkfun-qwiic-bmp581`
   - renders and installs `/etc/systemd/system/spaceavoider.service`
   - enables `spaceavoider.service` for boot startup
+- Native C++ helpers should be compiled during setup or manually with `bash scripts/build_native.sh`; Python should not compile C++ on every launch.
 - After setup, user manually re-enables overlay and reboots:
   - `sudo overlayctl enable`
   - `sudo reboot`
@@ -65,16 +70,21 @@ Display notes:
 - Python display rendering has intentionally been scratched.
 - `code/helper/display_helper.py` should stay thin glue that sends compact render commands to a future C++ renderer.
 - Do not re-add Python framebuffer writes, pygame rendering loops, pixel conversion, dirty-region tracking, text rasterization, or animation work to the helper.
-- `python3-pygame` is still installed for `audio_helper.py`/`pygame.mixer`, not for display.
 - TODO: Implement a native C++ display renderer for framebuffer/DRM/KMS output.
 
 Audio notes:
-- `audio_helper.py` uses `pygame.mixer`.
+- `audio_helper.py` uses `build/audio_player`, implemented in `native/audio_player.cpp`.
+- The native helper uses SDL2_mixer and can run as a long-lived stdin command server.
+- Python should only send preload/play/stop commands; do not re-add Python audio decoding or mixer logic.
 - `aplay -l` showed HDMI as card 0 and 3.5 mm jack as card 1 `Headphones`.
-- SDL/pygame names the headphone output:
+- SDL names the headphone output:
   - `bcm2835 Headphones, bcm2835 Headphones`
 - `audio_helper.py` defaults to that device.
 - Use `--system-default` only when intentionally testing the Pi default output.
+- Runtime startup tries to connect `SoundCore 2` for about 10 seconds. If connected, Python passes a BlueALSA A2DP PCM string like `bluealsa:SRV=org.bluealsa,DEV=E8:09:59:10:96:15,PROFILE=a2dp` to the native audio helper.
+- If the SoundCore cannot be found or connected, runtime falls back to the Raspberry Pi headphone jack.
+- List native helper devices:
+  - `python -m code.helper.audio_helper --list-devices`
 - Verified command:
   - `python -m code.helper.audio_helper --volume 0.8`
 
@@ -194,7 +204,7 @@ Runtime framework:
 - Approach callouts are crossing based, not one-shot. A descent from `52` to `38` ft AGL plays/logs `50` then `40`; climbing back to `51` ft AGL plays/logs `50`.
 - After the `100` ft callout is reported, approach mode auto-terminates 30 seconds later. After reaching the `100` ft point, climb-back callouts are suppressed, so `50 -> 30 -> 50` does not call out the second `50`.
 - Runtime audio playback is interrupting/non-queueing: a new callout stops any current callout and starts immediately.
-- Approach callout MP3s are preloaded into `pygame.mixer.Sound` objects at runtime startup; callout playback uses cached decoded clips, not on-demand decoding.
+- Approach callout MP3s are preloaded by the native audio service at runtime startup; callout playback uses cached decoded clips, not on-demand decoding.
 - Entering/leaving approach mode currently prints `BEEP_PLACEHOLDER`.
 - Calibration currently uses:
   - known altitude default `1179 ft`
@@ -224,7 +234,7 @@ Planned features:
    - threat color/size
 2. Audio callouts:
    - local WAV files
-   - pygame mixer playback
+   - native SDL2_mixer playback
    - rate limiting
    - mute button
 3. Baro logic:

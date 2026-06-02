@@ -37,13 +37,14 @@ PROJECT_PIP_PACKAGES=(
 
 SYSTEM_APT_PACKAGES=(
     bluetooth
+    bluez-alsa-utils
     bluez
     build-essential
+    libsdl2-dev
+    libsdl2-mixer-dev
     libgpiod2
     python3-dev
     python3-full
-    # Retained for audio_helper.py pygame.mixer only; display rendering moved out of Python.
-    python3-pygame
 )
 
 
@@ -162,6 +163,23 @@ install_python3_full() {
 }
 
 
+enable_bluetooth_audio_services() {
+    if ! command -v systemctl >/dev/null 2>&1; then
+        log "systemctl is not available; BlueALSA services will start on next normal boot if enabled by package install"
+        return 0
+    fi
+
+    if systemctl list-unit-files bluealsa.service >/dev/null 2>&1; then
+        log "enabling BlueALSA Bluetooth audio services"
+        run systemctl enable --now bluealsa.service
+    fi
+
+    if systemctl list-unit-files bluealsa-aplay.service >/dev/null 2>&1; then
+        run systemctl enable --now bluealsa-aplay.service
+    fi
+}
+
+
 project_owner() {
     stat -c '%U' "${PROJECT_ROOT}"
 }
@@ -236,6 +254,12 @@ setup_python_venv() {
 }
 
 
+build_native_helpers() {
+    log "building native helper binaries"
+    run_as_project_owner bash "${SCRIPT_DIR}/build_native.sh"
+}
+
+
 main() {
     require_root
     require_command apt-get
@@ -250,6 +274,8 @@ main() {
     update_upgrade_and_clean_apt
     # install_argon_one_driver
     install_python3_full
+    enable_bluetooth_audio_services
+    build_native_helpers
     setup_python_venv
     install_runtime_service
 

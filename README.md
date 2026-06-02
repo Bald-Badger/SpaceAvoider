@@ -26,22 +26,29 @@ The setup script currently:
 1. Checks/corrects the Pi system clock using the HTTP `Date` header from `http://deb.debian.org/debian/`.
 2. Runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`.
 3. Skips the Argon ONE driver install for now; the installer call is left commented in the setup script.
-4. Installs `build-essential`, `python3-dev`, `python3-full`, Raspberry Pi/Debian `python3-pygame` for audio playback, GPIO support libraries, and BlueZ Bluetooth tools.
-5. Creates/updates the project Python virtual environment at `.venv` with system site packages enabled.
-6. Installs project PyPI packages into `.venv`, including the BMP581, DHT11, and matrix keypad helpers.
-7. Installs and enables the `spaceavoider.service` systemd service so the runtime starts on boot.
+4. Installs `build-essential`, `libsdl2-dev`, `libsdl2-mixer-dev`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support.
+5. Builds native helper binaries, including `build/audio_player`.
+6. Creates/updates the project Python virtual environment at `.venv` with system site packages enabled.
+7. Installs project PyPI packages into `.venv`, including the BMP581, DHT11, and matrix keypad helpers.
+8. Installs and enables the `spaceavoider.service` systemd service so the runtime starts on boot.
+
+Native C++ helpers are compiled once during setup. Python should not compile
+C++ on every launch. To rebuild manually after editing native code:
+
+```bash
+bash scripts/build_native.sh
+```
 
 All project Python should run from `.venv`, not directly from system Python:
 
 ```bash
 source /rwbase/playground/SpaceAvoider/.venv/bin/activate
-python -c "import sys, pygame; print(sys.executable); print(pygame.version.ver)"
+python -c "import sys; print(sys.executable)"
 ```
 
 Display rendering is intentionally not implemented in Python now. The old
 pygame/framebuffer experiment was removed; future Python display code should be
 glue logic only, with performance-sensitive rendering implemented in C++.
-`python3-pygame` remains installed for `audio_helper.py` only.
 
 Print the placeholder display command:
 
@@ -57,8 +64,18 @@ Play the first audio callout helper:
 python -m code.helper.audio_helper --volume 0.8
 ```
 
+List SDL audio output devices visible to the native helper:
+
+```bash
+python -m code.helper.audio_helper --list-devices
+```
+
 The audio helper defaults to the Raspberry Pi headphone jack:
 `bcm2835 Headphones, bcm2835 Headphones`.
+
+At runtime startup, audio tries to connect to `SoundCore 2` for about 10
+seconds. If it connects, playback uses BlueALSA A2DP output. If it is not found
+or cannot connect, playback falls back to the headphone jack.
 
 Read the BMP581 pressure sensor:
 
