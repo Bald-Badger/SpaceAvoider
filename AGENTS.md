@@ -30,7 +30,8 @@ Current repository state:
 - `code/helper/metar_helper.py`: Stratux `/weather` WebSocket client and METAR/SPECI parser.
 - `code/helper/display_helper.py`: display glue placeholder only. The Python pygame/framebuffer experiment was removed; future performance-sensitive rendering should be implemented in C++.
 - `native/audio_player.cpp`: SDL2_mixer native audio service for low-latency callout playback.
-- `scripts/build_native.sh`: builds native helper binaries into ignored `build/`.
+- `native/display_renderer.cpp`: native framebuffer renderer; currently draws the four-corner circle smoke test.
+- `scripts/build_native.sh`: builds project C++ binaries into ignored `build/`.
 - `code/helper/audio_helper.py`: Python glue for the native audio player; keeps the runtime API but does not do decoding/playback itself.
 - `code/helper/bluetooth_helper.py`: BlueZ/bluetoothctl helper that scans and lists nearby Bluetooth devices.
 - `code/helper/pressure_helper.py`: SparkFun Qwiic BMP581 helper that reports pressure in Pa/hPa/inHg and temperature in C.
@@ -53,9 +54,9 @@ Persistent Pi setup:
   - checks/corrects the Pi clock using the HTTP `Date` header from `http://deb.debian.org/debian/`
   - runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`
   - keeps the Argon ONE installer function in the file, but the call is commented out
-  - installs `build-essential`, `libsdl2-dev`, `libsdl2-mixer-dev`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support
+  - installs `build-essential`, `libcairo2-dev`, `libsdl2-dev`, `libsdl2-mixer-dev`, `pkg-config`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support
   - enables/starts `bluealsa.service` and `bluealsa-aplay.service` when those units exist
-  - builds native helper binaries with `scripts/build_native.sh`
+  - builds project C++ binaries with `scripts/build_native.sh`
   - creates/updates `.venv` with `--system-site-packages`
   - uninstalls venv-local `pygame-ce`/`pygame` because display/audio no longer depend on Python pygame
   - installs project PyPI packages into `.venv`, currently `adafruit-circuitpython-dht`, `adafruit-circuitpython-matrixkeypad`, and `sparkfun-qwiic-bmp581`
@@ -68,9 +69,12 @@ Persistent Pi setup:
 
 Display notes:
 - Python display rendering has intentionally been scratched.
-- `code/helper/display_helper.py` should stay thin glue that sends compact render commands to a future C++ renderer.
+- `code/helper/display_helper.py` should stay thin glue that launches or sends compact render commands/state to the C++ renderer.
 - Do not re-add Python framebuffer writes, pygame rendering loops, pixel conversion, dirty-region tracking, text rasterization, or animation work to the helper.
-- TODO: Implement a native C++ display renderer for framebuffer/DRM/KMS output.
+- `native/display_renderer.cpp` currently opens `/dev/fb0`, mmaps the 32 bpp framebuffer, uses Cairo to render a full framebuffer-sized image, and writes the full frame once per second for the four-corner circle smoke test.
+- Full-frame writes are being tested first. If timing becomes too slow for the game-like traffic display, return to dirty-region updates while keeping Cairo/native rendering.
+- Future main-display handoff should be Python runtime state -> compact renderer commands/state -> long-lived C++ renderer process. Prefer stdin line protocol or Unix socket before adding heavier IPC.
+- TODO: Expand the native display renderer from the smoke test into the traffic-cone/nearby-aircraft display.
 
 Audio notes:
 - `audio_helper.py` uses `build/audio_player`, implemented in `native/audio_player.cpp`.

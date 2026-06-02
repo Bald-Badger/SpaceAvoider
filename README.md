@@ -26,8 +26,8 @@ The setup script currently:
 1. Checks/corrects the Pi system clock using the HTTP `Date` header from `http://deb.debian.org/debian/`.
 2. Runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`.
 3. Skips the Argon ONE driver install for now; the installer call is left commented in the setup script.
-4. Installs `build-essential`, `libsdl2-dev`, `libsdl2-mixer-dev`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support.
-5. Builds native helper binaries, including `build/audio_player`.
+4. Installs `build-essential`, `libcairo2-dev`, `libsdl2-dev`, `libsdl2-mixer-dev`, `pkg-config`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support.
+5. Builds project C++ binaries, including `build/audio_player` and `build/display_renderer`.
 6. Creates/updates the project Python virtual environment at `.venv` with system site packages enabled.
 7. Installs project PyPI packages into `.venv`, including the BMP581, DHT11, and matrix keypad helpers.
 8. Installs and enables the `spaceavoider.service` systemd service so the runtime starts on boot.
@@ -46,16 +46,18 @@ source /rwbase/playground/SpaceAvoider/.venv/bin/activate
 python -c "import sys; print(sys.executable)"
 ```
 
-Display rendering is intentionally not implemented in Python now. The old
-pygame/framebuffer experiment was removed; future Python display code should be
-glue logic only, with performance-sensitive rendering implemented in C++.
+Display rendering is driven by the native C++ renderer. It uses Cairo for 2D
+drawing into a full framebuffer-sized memory image, then writes the full frame
+to `/dev/fb0`. Python display code is glue only: the future runtime should send
+compact aircraft/display state to a long-lived renderer process, while C++ owns
+drawing, dirty regions, and framebuffer output.
 
-Print the placeholder display command:
+Run the first native display smoke test:
 
 ```bash
 cd /rwbase/playground/SpaceAvoider
 source .venv/bin/activate
-python -m code.helper.display_helper --print-command
+python -m code.helper.display_helper
 ```
 
 Play the first audio callout helper:

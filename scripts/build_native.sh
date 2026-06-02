@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build SpaceAvoider native helper binaries.
+# Build SpaceAvoider project C++ binaries.
 
 set -Eeuo pipefail
 
@@ -19,6 +19,11 @@ if ! command -v sdl2-config >/dev/null 2>&1; then
     exit 1
 fi
 
+if ! pkg-config --exists cairo; then
+    printf '[build][error] missing cairo development files; install libcairo2-dev\n' >&2
+    exit 1
+fi
+
 printf '[build] building native/audio_player.cpp\n'
 g++ \
     -std=c++17 \
@@ -31,3 +36,15 @@ g++ \
     -lSDL2_mixer
 
 printf '[build] wrote %s\n' "${BUILD_DIR}/audio_player"
+
+printf '[build] building native/display_renderer.cpp\n'
+g++ \
+    -std=c++17 \
+    -O2 \
+    -Wall \
+    -Wextra \
+    "${PROJECT_ROOT}/native/display_renderer.cpp" \
+    -o "${BUILD_DIR}/display_renderer" \
+    $(pkg-config --cflags --libs cairo)
+
+printf '[build] wrote %s\n' "${BUILD_DIR}/display_renderer"

@@ -1,103 +1,89 @@
-"""Display glue for SpaceAvoider.
-
-TODO: Implement the display renderer in C++.
-
-The old Python pygame/framebuffer experiment has intentionally been removed.
-Python display code should only be orchestration glue: collect runtime state,
-build compact render commands, and hand them to a native C++ renderer. The C++
-side should own the performance-sensitive work such as pixel conversion,
-dirty-region tracking, framebuffer/DRM/KMS output, double buffering, and any
-future animation or text rasterization.
-"""
+"""Display glue for SpaceAvoider's native C++ renderer."""
 
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
-from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 
 
 DEFAULT_RENDERER_PATH = Path("build/display_renderer")
-
-
-@dataclass(frozen=True)
-class DisplayCommand:
-    """Small Python-to-C++ render command placeholder."""
-
-    command: str
-    payload: dict[str, Any]
+DEFAULT_FRAMEBUFFER = Path("/dev/fb0")
+DEFAULT_FRAMEBUFFER_SYSFS = Path("/sys/class/graphics/fb0")
+DEFAULT_DEMO_SECONDS = 4
+DEFAULT_CIRCLE_RADIUS = 80
 
 
 class DisplayRenderer:
-    """Thin wrapper around the future C++ display renderer binary."""
+    """Thin wrapper around the C++ display renderer binary."""
 
     def __init__(self, renderer_path: Path = DEFAULT_RENDERER_PATH) -> None:
         self.renderer_path = renderer_path
 
-    def render(self, command: DisplayCommand) -> None:
-        """Send one render command to the C++ renderer.
-
-        This is intentionally glue only. Do not add framebuffer writes, pygame
-        rendering, pixel loops, or other heavy display computation here.
-        """
+    def run_corner_circle_demo(
+        self,
+        seconds: int = DEFAULT_DEMO_SECONDS,
+        radius: int = DEFAULT_CIRCLE_RADIUS,
+        framebuffer: Path = DEFAULT_FRAMEBUFFER,
+        framebuffer_sysfs: Path = DEFAULT_FRAMEBUFFER_SYSFS,
+    ) -> None:
+        """Run the native four-corner circle demo."""
 
         if not self.renderer_path.exists():
             raise SystemExit(
-                "Display renderer is not implemented yet.\n"
-                "TODO: build the C++ renderer and place it at "
-                f"{self.renderer_path}.\n"
+                f"Display renderer is not built yet: {self.renderer_path}\n"
+                "Run setup or build it manually:\n"
+                "  bash scripts/build_native.sh\n"
                 "Python display_helper.py should remain glue logic only."
             )
 
         subprocess.run(
-            [str(self.renderer_path)],
-            input=json.dumps(asdict(command)),
-            text=True,
+            [
+                str(self.renderer_path),
+                "--corner-circle-demo",
+                "--seconds",
+                str(seconds),
+                "--radius",
+                str(radius),
+                "--framebuffer",
+                str(framebuffer),
+                "--framebuffer-sysfs",
+                str(framebuffer_sysfs),
+            ],
             check=True,
         )
 
 
-def build_smoke_test_command() -> DisplayCommand:
-    """Build a tiny placeholder command for the future renderer."""
-
-    return DisplayCommand(
-        command="smoke_test",
-        payload={
-            "shape": "circle",
-            "x": 0.5,
-            "y": 0.5,
-            "radius": 80,
-            "color": [0, 220, 120],
-        },
-    )
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Display glue placeholder; real rendering belongs in the C++ renderer."
+        description="Run SpaceAvoider display tests through the native C++ renderer."
     )
     parser.add_argument(
         "--renderer",
         type=Path,
         default=DEFAULT_RENDERER_PATH,
-        help="path to the future C++ display renderer binary",
+        help="path to the C++ display renderer binary",
     )
-    parser.add_argument("--print-command", action="store_true", help="print the placeholder render command as JSON")
+    parser.add_argument("--seconds", type=int, default=DEFAULT_DEMO_SECONDS, help="demo duration in seconds")
+    parser.add_argument("--radius", type=int, default=DEFAULT_CIRCLE_RADIUS, help="circle radius in pixels")
+    parser.add_argument("--framebuffer", type=Path, default=DEFAULT_FRAMEBUFFER, help="framebuffer device path")
+    parser.add_argument(
+        "--framebuffer-sysfs",
+        type=Path,
+        default=DEFAULT_FRAMEBUFFER_SYSFS,
+        help="framebuffer sysfs metadata directory",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
-    command = build_smoke_test_command()
-
-    if args.print_command:
-        print(json.dumps(asdict(command), indent=2))
-        return
-
-    DisplayRenderer(renderer_path=args.renderer).render(command)
+    DisplayRenderer(renderer_path=args.renderer).run_corner_circle_demo(
+        seconds=args.seconds,
+        radius=args.radius,
+        framebuffer=args.framebuffer,
+        framebuffer_sysfs=args.framebuffer_sysfs,
+    )
 
 
 if __name__ == "__main__":

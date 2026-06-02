@@ -28,6 +28,8 @@ SERVICE_DESTINATION="/etc/systemd/system/${SERVICE_NAME}"
 ARGON_ONE_INSTALLER_URL="https://download.argon40.com/argon1.sh"
 APT_DATE_REFERENCE_URL="http://deb.debian.org/debian/"
 MAX_CLOCK_SKEW_SECONDS=300
+SPACEAVOIDER_HDMI_CONFIG_BEGIN="# BEGIN SpaceAvoider HDMI display settings"
+SPACEAVOIDER_HDMI_CONFIG_END="# END SpaceAvoider HDMI display settings"
 
 PROJECT_PIP_PACKAGES=(
     adafruit-circuitpython-dht
@@ -40,9 +42,11 @@ SYSTEM_APT_PACKAGES=(
     bluez-alsa-utils
     bluez
     build-essential
+    libcairo2-dev
     libsdl2-dev
     libsdl2-mixer-dev
     libgpiod2
+    pkg-config
     python3-dev
     python3-full
 )
@@ -180,6 +184,48 @@ enable_bluetooth_audio_services() {
 }
 
 
+boot_firmware_config_path() {
+    if [[ -f /boot/firmware/config.txt ]]; then
+        printf '/boot/firmware/config.txt'
+    else
+        printf '/boot/config.txt'
+    fi
+}
+
+
+configure_hdmi_display() {
+    local config_path
+    local config_mode
+    local temp_config
+
+    config_path="$(boot_firmware_config_path)"
+    [[ -f "${config_path}" ]] || die "Could not find Raspberry Pi boot config at ${config_path}"
+    config_mode="$(stat -c '%a' "${config_path}")"
+
+    log "configuring HDMI display overscan in ${config_path}"
+    temp_config="$(mktemp)"
+    awk \
+        -v begin="${SPACEAVOIDER_HDMI_CONFIG_BEGIN}" \
+        -v end="${SPACEAVOIDER_HDMI_CONFIG_END}" \
+        '
+            $0 == begin { skipping = 1; next }
+            $0 == end { skipping = 0; next }
+            !skipping { print }
+        ' \
+        "${config_path}" > "${temp_config}"
+
+    {
+        printf '\n%s\n' "${SPACEAVOIDER_HDMI_CONFIG_BEGIN}"
+        printf '# Use the full HDMI framebuffer; this avoids the 48px overscan gutter seen as 1824x984 on 1080p displays.\n'
+        printf 'disable_overscan=1\n'
+        printf '%s\n' "${SPACEAVOIDER_HDMI_CONFIG_END}"
+    } >> "${temp_config}"
+
+    run install -m "${config_mode}" "${temp_config}" "${config_path}"
+    rm -f "${temp_config}"
+}
+
+
 project_owner() {
     stat -c '%U' "${PROJECT_ROOT}"
 }
@@ -254,8 +300,8 @@ setup_python_venv() {
 }
 
 
-build_native_helpers() {
-    log "building native helper binaries"
+build_project_cpp() {
+    log "building project C++ code"
     run_as_project_owner bash "${SCRIPT_DIR}/build_native.sh"
 }
 
@@ -275,7 +321,8 @@ main() {
     # install_argon_one_driver
     install_python3_full
     enable_bluetooth_audio_services
-    build_native_helpers
+    configure_hdmi_display
+    build_project_cpp
     setup_python_venv
     install_runtime_service
 
