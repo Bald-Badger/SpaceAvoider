@@ -28,8 +28,9 @@ Current repository state:
 - `code/helper/traffic_helper.py`: standard-library Stratux `/traffic` WebSocket client.
 - `code/helper/gps_helper.py`: gpsd first, then Stratux `/getSituation` fallback.
 - `code/helper/metar_helper.py`: Stratux `/weather` WebSocket client and METAR/SPECI parser.
-- `code/helper/display_helper.py`: pygame drawing helper. If SDL cannot open a visible display, it renders with pygame to a surface and writes small changed patches directly to `/dev/fb0`.
+- `code/helper/display_helper.py`: display glue placeholder only. The Python pygame/framebuffer experiment was removed; future performance-sensitive rendering should be implemented in C++.
 - `code/helper/audio_helper.py`: pygame mixer helper that plays the default audio callout through the Raspberry Pi headphone output.
+- `code/helper/bluetooth_helper.py`: BlueZ/bluetoothctl helper that scans and lists nearby Bluetooth devices.
 - `code/helper/pressure_helper.py`: SparkFun Qwiic BMP581 helper that reports pressure in Pa/hPa/inHg and temperature in C.
 - `code/helper/humidity_helper.py`: Adafruit CircuitPython DHT helper for DHT11 temperature/humidity on GPIO17.
 - `code/helper/keypad_helper.py`: Adafruit CircuitPython MatrixKeypad helper for the 4x4 keypad on GPIO27/GPIO22/GPIO23/GPIO24 rows and GPIO12/GPIO26/GPIO19/GPIO16 columns.
@@ -50,7 +51,7 @@ Persistent Pi setup:
   - checks/corrects the Pi clock using the HTTP `Date` header from `http://deb.debian.org/debian/`
   - runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`
   - keeps the Argon ONE installer function in the file, but the call is commented out
-  - installs `build-essential`, `python3-dev`, `python3-full`, `python3-pygame`, and GPIO support libraries
+  - installs `build-essential`, `python3-dev`, `python3-full`, `python3-pygame` for audio playback, GPIO support libraries, and BlueZ Bluetooth tools
   - creates/updates `.venv` with `--system-site-packages`
   - uninstalls venv-local `pygame-ce`/`pygame` so apt `python3-pygame` remains visible
   - installs project PyPI packages into `.venv`, currently `adafruit-circuitpython-dht`, `adafruit-circuitpython-matrixkeypad`, and `sparkfun-qwiic-bmp581`
@@ -61,21 +62,11 @@ Persistent Pi setup:
   - `sudo reboot`
 
 Display notes:
-- Normal pygame display through SDL does not work reliably on this Stratux image.
-- `pygame-ce` from pip only exposed `offscreen`/`dummy` during testing.
-- apt `python3-pygame` still reported `kmsdrm not available` and no visible `linuxfb`.
-- Working path:
-  - pygame draws into a `Surface`
-  - helper converts only changed regions
-  - helper writes those patches to `/dev/fb0`
-- Pi framebuffer observed during tests:
-  - `/dev/fb0`
-  - size `1824x984`
-  - 32 bpp
-  - stride `7296`
-- Display smoke test:
-  - `python -m code.helper.display_helper --backend fb0`
-  - default `python -m code.helper.display_helper` also falls back to `/dev/fb0`
+- Python display rendering has intentionally been scratched.
+- `code/helper/display_helper.py` should stay thin glue that sends compact render commands to a future C++ renderer.
+- Do not re-add Python framebuffer writes, pygame rendering loops, pixel conversion, dirty-region tracking, text rasterization, or animation work to the helper.
+- `python3-pygame` is still installed for `audio_helper.py`/`pygame.mixer`, not for display.
+- TODO: Implement a native C++ display renderer for framebuffer/DRM/KMS output.
 
 Audio notes:
 - `audio_helper.py` uses `pygame.mixer`.

@@ -36,10 +36,13 @@ PROJECT_PIP_PACKAGES=(
 )
 
 SYSTEM_APT_PACKAGES=(
+    bluetooth
+    bluez
     build-essential
     libgpiod2
     python3-dev
     python3-full
+    # Retained for audio_helper.py pygame.mixer only; display rendering moved out of Python.
     python3-pygame
 )
 

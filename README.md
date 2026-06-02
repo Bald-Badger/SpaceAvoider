@@ -26,7 +26,7 @@ The setup script currently:
 1. Checks/corrects the Pi system clock using the HTTP `Date` header from `http://deb.debian.org/debian/`.
 2. Runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`.
 3. Skips the Argon ONE driver install for now; the installer call is left commented in the setup script.
-4. Installs `build-essential`, `python3-dev`, `python3-full`, Raspberry Pi/Debian `python3-pygame`, and GPIO support libraries.
+4. Installs `build-essential`, `python3-dev`, `python3-full`, Raspberry Pi/Debian `python3-pygame` for audio playback, GPIO support libraries, and BlueZ Bluetooth tools.
 5. Creates/updates the project Python virtual environment at `.venv` with system site packages enabled.
 6. Installs project PyPI packages into `.venv`, including the BMP581, DHT11, and matrix keypad helpers.
 7. Installs and enables the `spaceavoider.service` systemd service so the runtime starts on boot.
@@ -38,23 +38,17 @@ source /rwbase/playground/SpaceAvoider/.venv/bin/activate
 python -c "import sys, pygame; print(sys.executable); print(pygame.version.ver)"
 ```
 
-The display helper uses `pygame` from the system package through the venv.
-On this Stratux Pi, SDL may not expose a visible console video driver, so the
-helper can also render with pygame into an in-memory surface and write the
-result directly to `/dev/fb0`.
+Display rendering is intentionally not implemented in Python now. The old
+pygame/framebuffer experiment was removed; future Python display code should be
+glue logic only, with performance-sensitive rendering implemented in C++.
+`python3-pygame` remains installed for `audio_helper.py` only.
 
-Run the first pygame display helper:
+Print the placeholder display command:
 
 ```bash
 cd /rwbase/playground/SpaceAvoider
 source .venv/bin/activate
-python -m code.helper.display_helper --seconds 30
-```
-
-Force the direct framebuffer path if SDL display setup fails:
-
-```bash
-python -m code.helper.display_helper --backend fb0 --seconds 30
+python -m code.helper.display_helper --print-command
 ```
 
 Play the first audio callout helper:
@@ -88,6 +82,18 @@ Print debounced 4x4 matrix keypad presses:
 
 ```bash
 python -m code.helper.keypad_helper
+```
+
+List nearby Bluetooth devices:
+
+```bash
+python -m code.helper.bluetooth_helper --seconds 10
+```
+
+Filter for a known device name, such as a SoundCore speaker:
+
+```bash
+python -m code.helper.bluetooth_helper --seconds 20 --transport bredr --name SoundCore
 ```
 
 Run the first full runtime framework:
