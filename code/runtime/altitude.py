@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from code.helper.pressure_helper import PASCALS_PER_INHG
-from code.runtime.models import GpsSample, PressureAverages, StateSnapshot
+from code.runtime.models import GpsSample, PressureAverages
 
 
 STANDARD_ALTIMETER_INHG = 29.92
@@ -77,17 +77,6 @@ def pressure_to_altitude_ft(
     return PRESSURE_ALTITUDE_SCALE_FT * (
         1.0 - (pressure_inhg / altimeter_setting_inhg) ** PRESSURE_ALTITUDE_EXPONENT
     )
-
-
-def baro_altitude_from_snapshot(snapshot: StateSnapshot) -> float | None:
-    if snapshot.pressure_average is None:
-        return None
-
-    raw_altitude_ft = pressure_to_altitude_ft(
-        snapshot.pressure_average.pressure_pa,
-        snapshot.altimeter_setting_inhg,
-    )
-    return raw_altitude_ft + snapshot.calibration_offset_ft
 
 
 def calibrate_altitude(calibration_input: CalibrationInput) -> CalibrationResult:

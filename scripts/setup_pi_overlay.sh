@@ -25,6 +25,8 @@ PROJECT_VENV="${PROJECT_ROOT}/.venv"
 SERVICE_TEMPLATE="${SCRIPT_DIR}/spaceavoider.service.in"
 SERVICE_NAME="spaceavoider.service"
 SERVICE_DESTINATION="/etc/systemd/system/${SERVICE_NAME}"
+SETUP_STATE_DIR="${PROJECT_ROOT}/.setup"
+ARGON_ONE_INSTALL_MARKER="${SETUP_STATE_DIR}/argon-one-installed"
 ARGON_ONE_INSTALLER_URL="https://download.argon40.com/argon1.sh"
 APT_DATE_REFERENCE_URL="http://deb.debian.org/debian/"
 MAX_CLOCK_SKEW_SECONDS=300
@@ -49,6 +51,15 @@ SYSTEM_APT_PACKAGES=(
     pkg-config
     python3-dev
     python3-full
+)
+
+RTL_SDR_APT_PACKAGES=(
+    rtl-sdr
+)
+
+RTL_SDR_APT_FALLBACK_PACKAGES=(
+    rtl-sdr
+    librtlsdr0=0.6.0-4
 )
 
 
@@ -154,9 +165,16 @@ update_upgrade_and_clean_apt() {
 
 
 install_argon_one_driver() {
+    if [[ -f "${ARGON_ONE_INSTALL_MARKER}" ]]; then
+        log "Argon ONE driver install marker exists; skipping installer"
+        return 0
+    fi
+
     log "installing Argon ONE driver"
     log "source: ${ARGON_ONE_INSTALLER_URL}"
     curl -fsSL "${ARGON_ONE_INSTALLER_URL}" | bash
+    mkdir -p "${SETUP_STATE_DIR}"
+    touch "${ARGON_ONE_INSTALL_MARKER}"
 }
 
 
@@ -164,6 +182,19 @@ install_python3_full() {
     log "installing Python system packages"
     export DEBIAN_FRONTEND=noninteractive
     run apt-get install -y "${SYSTEM_APT_PACKAGES[@]}"
+}
+
+
+install_rtl_sdr_tools() {
+    log "installing rtl-sdr diagnostic tools"
+    export DEBIAN_FRONTEND=noninteractive
+
+    if apt-get install -y "${RTL_SDR_APT_PACKAGES[@]}"; then
+        return 0
+    fi
+
+    log "rtl-sdr install failed; retrying with Debian Bookworm librtlsdr0 version pin"
+    run apt-get install -y --allow-downgrades "${RTL_SDR_APT_FALLBACK_PACKAGES[@]}"
 }
 
 
@@ -318,8 +349,9 @@ main() {
     require_overlay_disabled
     ensure_clock_for_apt
     update_upgrade_and_clean_apt
-    # install_argon_one_driver
+    install_argon_one_driver
     install_python3_full
+    install_rtl_sdr_tools
     enable_bluetooth_audio_services
     configure_hdmi_display
     build_project_cpp

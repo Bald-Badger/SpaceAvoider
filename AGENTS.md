@@ -39,8 +39,9 @@ Current repository state:
 - `code/helper/keypad_helper.py`: Adafruit CircuitPython MatrixKeypad helper for the 4x4 keypad on GPIO27/GPIO22/GPIO23/GPIO24 rows and GPIO12/GPIO26/GPIO19/GPIO16 columns.
 - `code/runtime/`: first app runtime framework with thread-safe shared state, worker threads, event queue, keypad calibration flow, and placeholder pressure-only Kalman altitude tracking.
 - `log/`: runtime starts mirror stdout/stderr to `log/SpaceAvoider_log_MM_DD_YYYY-HH_MM.log`; same-minute restarts overwrite the previous log for that minute, and log files are ignored by git.
-- `audio/airbus_retard_retard.wav`: first cockpit meme/test callout audio clip.
-- `audio/SOURCES.md`: source and licensing notes for audio assets.
+- `audio/GeoFS-alerts`: GPWS callout audio submodule used for approach mode and startup alive sound.
+- `audio/Airbus-A220-GPWS`: Airbus A220 GPWS audio submodule kept as an alternate/source reference.
+- `audio/ai_gen`: local mode/cue clips for calibration and approach mode.
 
 Persistent Pi setup:
 - User manually disables overlay and reboots before running setup:
@@ -53,8 +54,9 @@ Persistent Pi setup:
   - refuses to run if `/` is still mounted as filesystem type `overlay`
   - checks/corrects the Pi clock using the HTTP `Date` header from `http://deb.debian.org/debian/`
   - runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`
-  - keeps the Argon ONE installer function in the file, but the call is commented out
+  - installs the Argon ONE driver from `https://download.argon40.com/argon1.sh` once, then records `.setup/argon-one-installed`
   - installs `build-essential`, `libcairo2-dev`, `libsdl2-dev`, `libsdl2-mixer-dev`, `pkg-config`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support
+  - installs `rtl-sdr` diagnostic tools; if the local Stratux `librtlsdr0` package conflicts, setup retries with Debian Bookworm's matching `librtlsdr0=0.6.0-4` using `--allow-downgrades`
   - enables/starts `bluealsa.service` and `bluealsa-aplay.service` when those units exist
   - builds project C++ binaries with `scripts/build_native.sh`
   - creates/updates `.venv` with `--system-site-packages`
@@ -228,29 +230,9 @@ Safety/human factors:
 - In training flights, joke sounds must not trigger unexpectedly.
 - Certified aircraft instruments, CFI, see-and-avoid, and normal procedures remain primary.
 
-Planned features:
-1. Traffic display / toy TCAS:
-   - Stratux traffic input
-   - ownship center
-   - range rings
-   - traffic symbols
-   - relative altitude labels
-   - threat color/size
-2. Audio callouts:
-   - local WAV files
-   - native SDL2_mixer playback
-   - rate limiting
-   - mute button
-3. Baro logic:
-   - BMP581 pressure
-   - relative altitude
-   - VSI
-   - calibration button
-4. Landing/toy Airbus callouts:
-   - `100/50/40/30/20`
-   - `RETARD RETARD`
-   - armed only near runway or by deliberate manual mode
-5. Later:
-   - METAR/FIS-B integration from Stratux
-   - optional temperature/humidity correction for pressure-altitude modeling
-   - possible custom Stratux endpoint after live behavior is proven
+Current roadmap:
+- Replace the display smoke test with the real traffic-cone/nearby-aircraft display.
+- Keep the future display hot path in native C++; Python should pass compact traffic/ownship state only.
+- Improve the altitude model beyond the current pressure-only Kalman placeholder, using pressure, BMP581 temperature, humidity, METAR altimeter, and optional GPS sanity checks.
+- Expand METAR selection beyond KCHD/A39 to nearby stations across the USA.
+- Add a real physical mute/off path before any cockpit use.

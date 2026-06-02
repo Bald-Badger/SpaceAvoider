@@ -1,5 +1,5 @@
 """
-Traffic helper functions for the SpaceInvader toy avionics project.
+Traffic helper functions for the SpaceAvoider toy avionics project.
 
 Stratux exposes decoded ADS-B/TIS-B/other traffic through the /traffic
 WebSocket. This helper normalizes the fields needed by a simple traffic display

@@ -1,1 +1,1 @@
-"""Helper modules for SpaceInvader."""
+"""Helper modules for SpaceAvoider."""

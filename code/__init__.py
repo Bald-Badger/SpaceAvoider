@@ -1,1 +1,1 @@
-"""SpaceInvader application code."""
+"""SpaceAvoider application code."""

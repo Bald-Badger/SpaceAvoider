@@ -1,5 +1,5 @@
 """
-METAR helper functions for the SpaceInvader toy avionics project.
+METAR helper functions for the SpaceAvoider toy avionics project.
 
 Stratux exposes FIS-B weather through the /weather WebSocket. This module uses
 only the Python standard library so it can run on a tight Stratux install.

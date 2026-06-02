@@ -1,5 +1,5 @@
 """
-GPS helper functions for the SpaceInvader toy avionics project.
+GPS helper functions for the SpaceAvoider toy avionics project.
 
 The GPYes/Stratux GPS path is expected to be shared through gpsd. Reading gpsd
 keeps this app from fighting Stratux for direct access to the USB serial GPS.

@@ -25,12 +25,14 @@ The setup script currently:
 
 1. Checks/corrects the Pi system clock using the HTTP `Date` header from `http://deb.debian.org/debian/`.
 2. Runs `apt-get update`, `apt-get upgrade -y`, `apt-get autoremove -y`, and `apt-get clean`.
-3. Skips the Argon ONE driver install for now; the installer call is left commented in the setup script.
+3. Installs the Argon ONE driver from `https://download.argon40.com/argon1.sh` once, then records `.setup/argon-one-installed` so reruns skip the installer.
 4. Installs `build-essential`, `libcairo2-dev`, `libsdl2-dev`, `libsdl2-mixer-dev`, `pkg-config`, `python3-dev`, `python3-full`, GPIO support libraries, BlueZ Bluetooth tools, and BlueALSA Bluetooth audio support.
-5. Builds project C++ binaries, including `build/audio_player` and `build/display_renderer`.
-6. Creates/updates the project Python virtual environment at `.venv` with system site packages enabled.
-7. Installs project PyPI packages into `.venv`, including the BMP581, DHT11, and matrix keypad helpers.
-8. Installs and enables the `spaceavoider.service` systemd service so the runtime starts on boot.
+5. Installs `rtl-sdr` diagnostic tools. If Stratux has a newer local `librtlsdr0` package that conflicts with Debian Bookworm `rtl-sdr`, setup retries with Debian's matching `librtlsdr0=0.6.0-4` using `--allow-downgrades`.
+6. Builds project C++ binaries, including `build/audio_player` and `build/display_renderer`.
+7. Creates/updates the project Python virtual environment at `.venv` with system site packages enabled.
+8. Removes stale venv-local `pygame`/`pygame-ce` installs because display and audio now use native C++ helpers.
+9. Installs project PyPI packages into `.venv`, including the BMP581, DHT11, and matrix keypad helpers.
+10. Installs and enables the `spaceavoider.service` systemd service so the runtime starts on boot.
 
 Native C++ helpers are compiled once during setup. Python should not compile
 C++ on every launch. To rebuild manually after editing native code:
@@ -120,6 +122,13 @@ Run the first full runtime framework:
 ```bash
 python -m code.runtime.main
 ```
+
+Runtime architecture:
+
+- Python owns orchestration, sensor polling, shared state, calibration flow, keypad events, METAR refresh, and approach-mode decisions.
+- Native C++ owns high-workload display/audio paths through `build/display_renderer` and `build/audio_player`.
+- Runtime state is kept in `code/runtime/state.py`; live data should not be put in OS environment variables.
+- GPS is optional. The app must keep running and approach callouts must still work when GPS is missing or stale.
 
 The setup script also enables the runtime as a boot service. Useful service
 commands:
