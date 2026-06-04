@@ -198,17 +198,23 @@ Runtime framework:
 - TODO: Expand METAR selection to any possible METAR station in the USA.
 - Runtime console output is mirrored to timestamped files under `log/` at program start.
 - Press `C` to start altimeter calibration, enter four digits such as `2992`, press `D` to cancel, and press `*` for backspace.
-- Entering calibration mode plays `audio/ai_gen/Calibrate mode.wav` when audio is enabled.
-- Successful calibration plays `audio/ai_gen/calibration success.mp3` when audio is enabled.
+- Entering calibration mode plays `audio/ai_gen/Calibrate Mode.wav` when audio is enabled.
+- Successful calibration plays `audio/ai_gen/Calibration Success.wav` when audio is enabled.
 - Press `A` to enter approach mode; press `A` again to leave approach mode.
 - Entering approach mode immediately refreshes METAR and recalculates current altitude/AGL using the current pressure buffer plus latest valid altimeter setting.
 - Entering approach mode plays `audio/ai_gen/Approach Mode.wav`.
-- Pressing `A` to manually cancel approach mode plays `audio/ai_gen/Approach Mode terminate.wav`; automatic termination does not play the terminate sound.
+- Pressing `A` to manually cancel approach mode plays `audio/ai_gen/Approach Mode Terminate.wav`; automatic termination does not play the terminate sound.
 - Program startup plays `audio/GeoFS-alerts/audio/airbus-autopilot-off.mp3` as the current alive placeholder when audio is enabled.
+- Runtime resolves `audio/ai_gen` cue files by case/extension-tolerant stem matching so renamed generated files keep working when their intent is the same.
+- Voice reminders:
+  - switch fuel tank first plays 30 minutes after boot/runtime start, then every 30 minutes
+  - drink water first plays 20 minutes after boot/runtime start, then every 30 minutes
+  - clips are `audio/ai_gen/Switch Fuel Tank.wav` and `audio/ai_gen/Drink Water.wav`
 - Approach mode records the altitude/AGL at entry and estimates AGL as current filtered altitude minus configured known field altitude.
 - Approach callouts use `audio/GeoFS-alerts/audio/{threshold}.mp3` for `2500, 1000, 500, 400, 300, 200, 100, 50, 40, 30, 20, 10, 5`.
 - Approach callouts are crossing based, not one-shot. A descent from `52` to `38` ft AGL plays/logs `50` then `40`; climbing back to `51` ft AGL plays/logs `50`.
 - After the `100` ft callout is reported, approach mode auto-terminates 30 seconds later. After reaching the `100` ft point, climb-back callouts are suppressed, so `50 -> 30 -> 50` does not call out the second `50`.
+- The `5` ft callout uses blocking playback and is immediately followed by `audio/GeoFS-alerts/audio/airbus-retard.mp3`.
 - Runtime audio playback is interrupting/non-queueing: a new callout stops any current callout and starts immediately.
 - Approach callout MP3s are preloaded by the native audio service at runtime startup; callout playback uses cached decoded clips, not on-demand decoding.
 - Entering/leaving approach mode currently prints `BEEP_PLACEHOLDER`.

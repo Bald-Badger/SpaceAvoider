@@ -8,13 +8,19 @@ import signal
 import threading
 import time
 from pathlib import Path
+import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from code.helper.audio_helper import DEFAULT_AUDIO_DEVICE, InterruptingAudioPlayer
 from code.helper.bluetooth_helper import ensure_device_connected
+from code.runtime.audio_assets import AI_GEN_AUDIO_DIR, GEOFS_AUDIO_DIR, existing_audio_files, resolve_audio_file
 from code.runtime.altitude import CalibrationInput, calibrate_altitude
 from code.runtime.approach import ApproachModeController
 from code.runtime.events import KeyPressedEvent, RuntimeEvent, SensorFaultEvent
 from code.runtime.logging_utils import setup_runtime_log
+from code.runtime.reminders import VoiceReminderController
 from code.runtime.state import (
     DEFAULT_ALTIMETER_SETTING_INHG,
     DEFAULT_KNOWN_ALTITUDE_FT,
@@ -27,10 +33,15 @@ DEFAULT_GPS_SANITY_THRESHOLD_FT = 500.0
 DEFAULT_STATUS_INTERVAL_SECONDS = 5.0
 DEFAULT_BLUETOOTH_AUDIO_NAME = "SoundCore 2"
 DEFAULT_BLUETOOTH_AUDIO_SCAN_SECONDS = 10.0
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-STARTUP_AUDIO = PROJECT_ROOT / "audio" / "GeoFS-alerts" / "audio" / "airbus-autopilot-off.mp3"
-CALIBRATE_MODE_AUDIO = PROJECT_ROOT / "audio" / "ai_gen" / "Calibrate mode.wav"
-CALIBRATE_SUCCESS_AUDIO = PROJECT_ROOT / "audio" / "ai_gen" / "calibration success.mp3"
+STARTUP_AUDIO = GEOFS_AUDIO_DIR / "airbus-autopilot-off.mp3"
+CALIBRATE_MODE_AUDIO = resolve_audio_file(AI_GEN_AUDIO_DIR, "Calibrate Mode.wav", "Calibrate mode.wav")
+CALIBRATE_SUCCESS_AUDIO = resolve_audio_file(
+    AI_GEN_AUDIO_DIR,
+    "Calibration Success.wav",
+    "calibration success.mp3",
+)
+SWITCH_FUEL_TANK_AUDIO = resolve_audio_file(AI_GEN_AUDIO_DIR, "Switch Fuel Tank.wav")
+DRINK_WATER_AUDIO = resolve_audio_file(AI_GEN_AUDIO_DIR, "Drink Water.wav")
 
 
 class CalibrationController:
@@ -231,6 +242,11 @@ def main() -> None:
         audio_player=audio_player,
     )
     approach = ApproachModeController(state, audio_player=audio_player)
+    reminders = VoiceReminderController(
+        audio_player=audio_player,
+        fuel_audio=SWITCH_FUEL_TANK_AUDIO,
+        water_audio=DRINK_WATER_AUDIO,
+    )
 
     def stop(_signum: int, _frame: object) -> None:
         stop_event.set()
@@ -240,7 +256,15 @@ def main() -> None:
 
     if audio_player is not None:
         try:
-            audio_files = (STARTUP_AUDIO, CALIBRATE_MODE_AUDIO, CALIBRATE_SUCCESS_AUDIO, *approach.audio_files)
+            audio_files = existing_audio_files(
+                (
+                    STARTUP_AUDIO,
+                    CALIBRATE_MODE_AUDIO,
+                    CALIBRATE_SUCCESS_AUDIO,
+                    *approach.audio_files,
+                    *reminders.audio_files,
+                )
+            )
             audio_player.preload(audio_files)
             print(f"[audio] preloaded {len(audio_files)} runtime clips", flush=True)
             audio_player.play_preloaded_now(STARTUP_AUDIO)
@@ -249,6 +273,7 @@ def main() -> None:
             audio_player = None
             calibration.audio_player = None
             approach.audio_player = None
+            reminders.audio_player = None
             print(f"[fault] audio: {exc}", flush=True)
 
     threads = start_runtime_workers(
@@ -290,6 +315,7 @@ def main() -> None:
                 print(f"[fault] {event.worker}: {event.message}", flush=True)
 
             approach.tick()
+            reminders.tick()
 
             if args.status_interval > 0.0 and time.monotonic() >= next_status_at:
                 print(_format_status(state), flush=True)

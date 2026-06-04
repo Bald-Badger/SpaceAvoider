@@ -134,6 +134,8 @@ The setup script also enables the runtime as a boot service. Useful service
 commands:
 
 ```bash
+sudo systemctl enable spaceavoider.service
+sudo systemctl disable spaceavoider.service
 sudo systemctl start spaceavoider.service
 sudo systemctl stop spaceavoider.service
 sudo systemctl restart spaceavoider.service
@@ -164,8 +166,8 @@ for sanity checks until proven reliable in the current environment.
 
 Press `C` on the keypad to start altimeter calibration, then enter four digits
 like `2992`. During calibration, `D` cancels and `*` backspaces. Entering
-calibration plays `audio/ai_gen/Calibrate mode.wav` when audio is enabled. A
-successful calibration plays `audio/ai_gen/calibration success.mp3`.
+calibration plays `audio/ai_gen/Calibrate Mode.wav` when audio is enabled. A
+successful calibration plays `audio/ai_gen/Calibration Success.wav`.
 
 Press `A` to enter approach mode; press `A` again to leave approach mode. In
 approach mode, AGL callouts use files from `audio/GeoFS-alerts/audio` for:
@@ -174,12 +176,14 @@ Entering approach mode immediately refreshes METAR, overwrites the current
 altimeter setting when a valid METAR is available, and computes entry AGL from
 the current pressure buffer with that setting. Entering approach plays
 `audio/ai_gen/Approach Mode.wav`. Pressing `A` to cancel approach mode plays
-`audio/ai_gen/Approach Mode terminate.wav`; automatic approach termination does
+`audio/ai_gen/Approach Mode Terminate.wav`; automatic approach termination does
 not play that terminate sound.
 
 After the `100` ft callout is reported, approach mode auto-terminates 30 seconds
 later. After reaching the `100` ft point, climb-back callouts are suppressed, so
 a sequence like `50 -> 30 -> 50` does not call out the second `50`.
+When the `5` ft callout plays, it is immediately followed by
+`audio/GeoFS-alerts/audio/airbus-retard.mp3`.
 
 ```text
 2500, 1000, 500, 400, 300, 200, 100, 50, 40, 30, 20, 10, 5
@@ -193,6 +197,13 @@ MP3 files on the hot path.
 On program startup, audio-enabled runtime plays
 `audio/GeoFS-alerts/audio/airbus-autopilot-off.mp3` as a placeholder alive
 sound.
+
+Voice reminders:
+
+- Switch fuel tank: first alert 30 minutes after program start, then every 30 minutes.
+- Drink water: first alert 20 minutes after program start, then every 30 minutes.
+- Reminder clips are resolved from `audio/ai_gen/Switch Fuel Tank.wav` and `audio/ai_gen/Drink Water.wav`.
+- Runtime audio lookup is case/extension tolerant for `audio/ai_gen` cue names, so small filename changes do not break startup.
 
 Scan which Raspberry Pi header GPIO pins currently look free:
 

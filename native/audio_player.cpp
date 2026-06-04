@@ -272,6 +272,10 @@ void run_server(AudioPlayer& player) {
             } else if (command == "PLAY_PRELOADED") {
                 player.play(argument, true);
                 std::cout << "OK PLAY_PRELOADED" << std::endl;
+            } else if (command == "PLAY_PRELOADED_BLOCKING") {
+                player.play(argument, true);
+                player.wait_until_idle();
+                std::cout << "OK PLAY_PRELOADED_BLOCKING" << std::endl;
             } else if (command == "STOP") {
                 player.stop();
                 std::cout << "OK STOP" << std::endl;

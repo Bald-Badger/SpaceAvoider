@@ -185,19 +185,6 @@ install_python3_full() {
 }
 
 
-install_rtl_sdr_tools() {
-    log "installing rtl-sdr diagnostic tools"
-    export DEBIAN_FRONTEND=noninteractive
-
-    if apt-get install -y "${RTL_SDR_APT_PACKAGES[@]}"; then
-        return 0
-    fi
-
-    log "rtl-sdr install failed; retrying with Debian Bookworm librtlsdr0 version pin"
-    run apt-get install -y --allow-downgrades "${RTL_SDR_APT_FALLBACK_PACKAGES[@]}"
-}
-
-
 enable_bluetooth_audio_services() {
     if ! command -v systemctl >/dev/null 2>&1; then
         log "systemctl is not available; BlueALSA services will start on next normal boot if enabled by package install"
@@ -351,7 +338,6 @@ main() {
     update_upgrade_and_clean_apt
     install_argon_one_driver
     install_python3_full
-    install_rtl_sdr_tools
     enable_bluetooth_audio_services
     configure_hdmi_display
     build_project_cpp

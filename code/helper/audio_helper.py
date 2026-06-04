@@ -84,6 +84,10 @@ class InterruptingAudioPlayer:
         self.start()
         self._send("PLAY_PRELOADED", self._audio_path(audio_file))
 
+    def play_preloaded_and_wait(self, audio_file: Path) -> None:
+        self.start()
+        self._send("PLAY_PRELOADED_BLOCKING", self._audio_path(audio_file))
+
     def stop(self) -> None:
         if self._process is None:
             return

@@ -6,15 +6,20 @@ from dataclasses import dataclass
 from pathlib import Path
 import time
 
+from code.runtime.audio_assets import AI_GEN_AUDIO_DIR, GEOFS_AUDIO_DIR, resolve_audio_file
 from code.runtime.altitude import pressure_to_altitude_ft
 from code.runtime.state import RuntimeState
 from code.runtime.workers import update_metar_altimeter
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CALLOUT_AUDIO_DIR = PROJECT_ROOT / "audio" / "GeoFS-alerts" / "audio"
-APPROACH_MODE_AUDIO = PROJECT_ROOT / "audio" / "ai_gen" / "Approach Mode.wav"
-APPROACH_MODE_TERMINATE_AUDIO = PROJECT_ROOT / "audio" / "ai_gen" / "Approach Mode terminate.wav"
+CALLOUT_AUDIO_DIR = GEOFS_AUDIO_DIR
+APPROACH_MODE_AUDIO = resolve_audio_file(AI_GEN_AUDIO_DIR, "Approach Mode.wav")
+APPROACH_MODE_TERMINATE_AUDIO = resolve_audio_file(
+    AI_GEN_AUDIO_DIR,
+    "Approach Mode Terminate.wav",
+    "Approach Mode terminate.wav",
+)
+RETARD_AUDIO = GEOFS_AUDIO_DIR / "airbus-retard.mp3"
 CALLOUT_THRESHOLDS_FT = (2500, 1000, 500, 400, 300, 200, 100, 50, 40, 30, 20, 10, 5)
 APPROACH_AUTO_TERMINATE_AFTER_100_SECONDS = 30.0
 
@@ -37,6 +42,7 @@ class ApproachModeController:
         audio_dir: Path = CALLOUT_AUDIO_DIR,
         approach_mode_audio: Path = APPROACH_MODE_AUDIO,
         approach_mode_terminate_audio: Path = APPROACH_MODE_TERMINATE_AUDIO,
+        retard_audio: Path = RETARD_AUDIO,
     ) -> None:
         self.state = state
         self.audio_player = audio_player
@@ -44,6 +50,7 @@ class ApproachModeController:
         self.audio_dir = audio_dir
         self.approach_mode_audio = approach_mode_audio
         self.approach_mode_terminate_audio = approach_mode_terminate_audio
+        self.retard_audio = retard_audio
         self.active = False
         self.start_altitude_ft: float | None = None
         self.start_agl_ft: float | None = None
@@ -56,6 +63,7 @@ class ApproachModeController:
         return (
             self.approach_mode_audio,
             self.approach_mode_terminate_audio,
+            self.retard_audio,
             *(self.audio_file_for_threshold(threshold) for threshold in self.callout_thresholds_ft),
         )
 
@@ -174,6 +182,13 @@ class ApproachModeController:
         print(f"[approach] callout {callout.threshold_ft} ft AGL", flush=True)
         if self.audio_player is None:
             print(f"[approach] audio disabled: {callout.audio_file}", flush=True)
+            if callout.threshold_ft == 5:
+                print(f"[approach] audio disabled: {self.retard_audio}", flush=True)
+            return
+
+        if callout.threshold_ft == 5:
+            self.play_preloaded_blocking(callout.audio_file)
+            self.play_preloaded(self.retard_audio)
             return
 
         self.play_preloaded(callout.audio_file)
@@ -187,6 +202,15 @@ class ApproachModeController:
 
         try:
             self.audio_player.play_preloaded_now(audio_file)
+        except (Exception, SystemExit) as exc:
+            print(f"[fault] audio: {exc}", flush=True)
+
+    def play_preloaded_blocking(self, audio_file: Path) -> None:
+        if self.audio_player is None:
+            return
+
+        try:
+            self.audio_player.play_preloaded_and_wait(audio_file)
         except (Exception, SystemExit) as exc:
             print(f"[fault] audio: {exc}", flush=True)
 
