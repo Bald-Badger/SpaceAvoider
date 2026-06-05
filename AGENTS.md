@@ -191,6 +191,13 @@ Runtime framework:
   - METAR: every 5 minutes, instantly overwrites the runtime altimeter setting from latest valid METAR
   - altitude tracker: every 0.5 seconds, pressure-only Kalman placeholder
   - keypad: low-duty debounced polling through Adafruit MatrixKeypad, emits key press events into the runtime queue
+  - diagnostics: enabled by default; logs pressure/GPS/altitude samples, Stratux `/getStatus` and `/getSituation` every 5 seconds, `/getTowers` every 30 seconds when available, and every raw Stratux `/weather` WebSocket message
+- `--no-diagnostics` disables only the extra forensic logs. Leave diagnostics enabled for flight testing, especially when debugging UAT/FIS-B weather.
+- Important debug prefixes:
+  - `[stratux-status-debug]`: UAT radio connectivity and all UAT counters/deltas
+  - `[weather-raw]`: raw Stratux `/weather` messages, including METAR/NEXRAD/NOTAM/TAF types when received
+  - `[stratux-tower-debug]`: Stratux tower endpoint output or endpoint failure
+  - `[gps-debug]` and `[stratux-situation-debug]`: GPS fix state, satellites, accuracy, NMEA, and Stratux situation fields
 - Always assume GPS might be unavailable, stale, wrong, or reporting no fix.
 - GPS must never be required for the app to keep running, for approach mode to work, or for callouts to fire.
 - GPS is advisory only and currently used as a calibration sanity check when available.

@@ -160,6 +160,25 @@ Runtime worker schedule:
 - METAR: every 5 minutes, instantly overwrites the current altimeter setting from the latest valid METAR. If GPS is unavailable, it uses KCHD; if GPS is available, it tries the nearest of KCHD/A39 first and falls back to the other if needed.
 - Altitude tracker: twice per second, uses pressure-derived altitude through a placeholder Kalman smoother.
 - Keypad: low-duty debounced scan loop, emits key press events.
+- Diagnostics: enabled by default for flight testing. Logs every pressure/GPS/altitude sample, Stratux `/getStatus` and `/getSituation` every 5 seconds, `/getTowers` every 30 seconds when available, and every raw `/weather` WebSocket message. Use `--no-diagnostics` only when you intentionally want quieter logs.
+
+For the June 5, 2026 flight test, leave diagnostics enabled and start/follow logs
+with:
+
+```bash
+sudo systemctl start spaceavoider.service
+journalctl -u spaceavoider.service -f
+tail -f log/SpaceAvoider_log_*.log
+```
+
+Useful grep patterns after flight:
+
+```bash
+grep -a "stratux-status-debug" log/SpaceAvoider_log_*.log
+grep -a "weather-raw" log/SpaceAvoider_log_*.log
+grep -a "UAT_messages_total\\|UAT_METAR_total\\|UAT_NEXRAD_total" log/SpaceAvoider_log_*.log
+grep -a "gps-debug\\|stratux-situation-debug" log/SpaceAvoider_log_*.log
+```
 
 Runtime behavior must not depend on GPS being available. GPS is only advisory
 for sanity checks until proven reliable in the current environment.

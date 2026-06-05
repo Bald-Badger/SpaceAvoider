@@ -192,6 +192,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-gps", action="store_true", help="disable the GPS worker")
     parser.add_argument("--no-metar", action="store_true", help="disable METAR altimeter setting updates")
     parser.add_argument("--no-keypad", action="store_true", help="disable the keypad worker")
+    parser.add_argument("--no-diagnostics", action="store_true", help="disable intensive Stratux/GPS/UAT diagnostics")
     parser.add_argument("--no-audio", action="store_true", help="disable approach callout audio playback")
     parser.add_argument(
         "--no-bluetooth-audio",
@@ -285,6 +286,7 @@ def main() -> None:
         enable_gps=not args.no_gps,
         enable_metar=not args.no_metar,
         enable_keypad=not args.no_keypad,
+        enable_diagnostics=not args.no_diagnostics,
     )
 
     print("[runtime] started; press C to calibrate, A for approach mode", flush=True)
